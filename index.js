@@ -1,27 +1,45 @@
 const path = require("path");
-const fs = require("fs");
+const { promises: fs } = require("fs");
 
-function processFile(file) {
+async function readFileLines(file) {
+  let contents = await fs.readFile(file, {
+    encoding: "utf8",
+  });
+  return contents.split("\n");
+}
+
+async function processFile(file) {
   console.log(`Processing "${file}"...`);
 }
 
-if (process.argv.length != 3) {
-  console.error(
-    "Please pass the path to the source tree as an argument to this script."
-  );
-  process.exit(1);
-}
+async function main() {
+  if (process.argv.length != 3) {
+    throw new Error(
+      "Please pass the path to the source tree as an argument to this script."
+    );
+  }
 
-let root = path.resolve(process.argv[2]);
-if (!fs.existsSync(root) || !fs.statSync(root).isDirectory()) {
-  console.error(`"${process.argv[2]}" is not a directory.`);
-}
+  let root = path.resolve(process.argv[2]);
 
-let filelist = path.join(__dirname, "filelist.txt");
-let files = fs.readFileSync(filelist, { encoding: "utf8" }).split("\n");
+  try {
+    let stat = await fs.stat(root);
+    if (!stat.isDirectory()) {
+      throw new Error(`"${root}" is not a directory.`);
+    }
+  } catch (e) {
+    throw new Error(`Failed to access ${root}`);
+  }
 
-for (let file of files) {
-  if (file) {
-    processFile(path.join(root, file));
+  let filelist = await readFileLines(path.join(__dirname, "filelist.txt"));
+
+  for (let file of filelist) {
+    if (file) {
+      await processFile(path.join(root, file));
+    }
   }
 }
+
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});
