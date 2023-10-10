@@ -40,7 +40,6 @@ devtools/client/framework/toolbox-window.xhtml
 devtools/client/framework/toolbox.xhtml
 devtools/client/storage/index.xhtml
 devtools/client/styleeditor/index.xhtml
-docs/code-quality/coding-style/css_guidelines.rst
 layout/tools/layout-debug/ui/content/layoutdebug.xhtml
 remote/marionette/chrome/test.xhtml
 remote/marionette/chrome/test_dialog.xhtml

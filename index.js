@@ -1,5 +1,10 @@
 const path = require("path");
 const { promises: fs } = require("fs");
+const sax = require("sax");
+
+// const LINK_RE = /^(\s+)<(\w+:)?link\s.*rel="localization"/;
+const HTML_URI = "http://www.w3.org/1999/xhtml";
+const XUL_URI = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
 
 async function readFileLines(file) {
   let contents = await fs.readFile(file, {
@@ -10,6 +15,44 @@ async function readFileLines(file) {
 
 async function processFile(file) {
   console.log(`Processing "${file}"...`);
+  let lines = await readFileLines(file);
+
+  let parser = sax.parser(true, {
+    boolean: true,
+    xmlns: true,
+    position: true,
+  });
+
+  let xulPrefix = null;
+  let htmlPrefix = null;
+  let startTagLine = null;
+
+  parser.onopentag = ({ name, attributes, ns }) => {
+    for (let [prefix, uri] of Object.entries(ns)) {
+      if (uri == HTML_URI) {
+        htmlPrefix = prefix;
+      } else if (uri == XUL_URI) {
+        xulPrefix = prefix;
+      }
+    }
+
+    startTagLine = parser.line;
+
+    // We only care about the first tag.
+    throw new Error("Bail out");
+  };
+
+  let parseable = lines.map((l) => (l.startsWith("#") ? "" : l)).join("\n");
+
+  try {
+    parser.write(parseable).close();
+  } catch (e) {
+    // Ignore
+  }
+
+  if (htmlPrefix === null) {
+    throw new Error("No HTML namespace defined");
+  }
 }
 
 async function main() {
