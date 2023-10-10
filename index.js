@@ -2,7 +2,10 @@ const path = require("path");
 const { promises: fs } = require("fs");
 const sax = require("sax");
 
+const STYLESHEET_RE = /^<\?xml-stylesheet\s.*href="([^"]+)"/;
+
 // const LINK_RE = /^(\s+)<(\w+:)?link\s.*rel="localization"/;
+
 const HTML_URI = "http://www.w3.org/1999/xhtml";
 const XUL_URI = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
 
@@ -25,7 +28,7 @@ async function processFile(file) {
 
   let xulPrefix = null;
   let htmlPrefix = null;
-  let startTagLine = null;
+  let afterStartTag = null;
 
   parser.onopentag = ({ name, attributes, ns }) => {
     for (let [prefix, uri] of Object.entries(ns)) {
@@ -36,7 +39,9 @@ async function processFile(file) {
       }
     }
 
-    startTagLine = parser.line;
+    // The parser is currently looking at the `>` of the start tag. Use the next
+    // line as a potential insertion point.
+    afterStartTag = parser.line + 1;
 
     // We only care about the first tag.
     throw new Error("Bail out");
@@ -53,6 +58,60 @@ async function processFile(file) {
   if (htmlPrefix === null) {
     throw new Error("No HTML namespace defined");
   }
+
+  if (htmlPrefix) {
+    htmlPrefix += ":";
+  }
+  if (xulPrefix) {
+    xulPrefix += ":";
+  }
+
+  let stylesheets = [];
+
+  // First pass, list all the stylesheets.
+  for (let line of lines) {
+    let matches = line.match(STYLESHEET_RE);
+    if (matches !== null) {
+      stylesheets.push(matches[1]);
+    }
+  }
+
+  if (!stylesheets.length) {
+    // Nothing to do here
+    return;
+  }
+
+  // Second pass, attempt to find another link element to use as a reference.
+  let linkRe = new RegExp(`(\\s*)<${htmlPrefix}link\\s`);
+  let found = false;
+  for (let i = 0; i < lines.length; i++) {
+    let matches = lines[i].match(linkRe);
+    if (matches !== null) {
+      found = true;
+      let indent = matches[1];
+      stylesheets = stylesheets.map(
+        (s) => `${indent}<${htmlPrefix}link rel="stylesheet" href="${s}" />`
+      );
+      lines.splice(i, 0, ...stylesheets);
+
+      break;
+    }
+  }
+
+  if (!found) {
+    // Third pass, just insert after the start tag.
+    stylesheets = stylesheets.map(
+      (s) => `  <${htmlPrefix}link rel="stylesheet" href="${s}" />`
+    );
+
+    lines.splice(afterStartTag, 0, ...stylesheets);
+  }
+
+  // Final pass, strip the processing instructions.
+  lines = lines.filter((l) => l.match(STYLESHEET_RE) === null);
+
+  // Write out the result.
+  await fs.writeFile(file, lines.join("\n"));
 }
 
 async function main() {
