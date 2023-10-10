@@ -56,7 +56,8 @@ security/manager/pki/resources/content/editcacert.xhtml
 security/manager/pki/resources/content/exceptionDialog.xhtml
 security/manager/pki/resources/content/load_device.xhtml
 security/manager/pki/resources/content/resetpassword.xhtml
-security/manager/pki/resources/content/setp	toolkit/components/alerts/alert.xhtml
+security/manager/pki/resources/content/setp12password.xhtml
+toolkit/components/alerts/alert.xhtml
 toolkit/components/apppicker/content/appPicker.xhtml
 toolkit/components/printing/content/printPageSetup.xhtml
 toolkit/components/prompts/content/commonDialog.xhtml
