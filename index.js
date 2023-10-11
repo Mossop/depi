@@ -29,7 +29,11 @@ ${indent}/>`;
   return link;
 }
 
-function insertStylesheets(lines, stylesheets) {
+function buildStylesheets(stylesheets, indent, prefix) {
+  return stylesheets.map((s) => prettyLink(indent, prefix, s));
+}
+
+function insertStylesheets(lines, stylesheets, trailingWhitespace) {
   // We need to use a parser to figure out the XML namespaces
   let parser = sax.parser(true, {
     boolean: true,
@@ -86,7 +90,7 @@ function insertStylesheets(lines, stylesheets) {
       let matches = lines[i].match(linksetRe);
       if (matches !== null) {
         let indent = matches[1] + "  ";
-        stylesheets = stylesheets.map((s) => prettyLink(indent, linkPrefix, s));
+        stylesheets = buildStylesheets(stylesheets, indent, linkPrefix);
 
         // Add a linebreak between the stylesheets and the localization links.
         stylesheets.push("");
@@ -105,7 +109,7 @@ function insertStylesheets(lines, stylesheets) {
       let matches = lines[i].match(linkRe);
       if (matches !== null) {
         let indent = matches[1];
-        stylesheets = stylesheets.map((s) => prettyLink(indent, htmlPrefix, s));
+        stylesheets = buildStylesheets(stylesheets, indent, htmlPrefix);
 
         // Add a linebreak between the stylesheets and the localization links.
         stylesheets.push("");
@@ -119,7 +123,7 @@ function insertStylesheets(lines, stylesheets) {
 
   // Third pass, insert just after the start tag.
   console.warn("WARN: Inserting stylesheets inside document element");
-  stylesheets = stylesheets.map((s) => prettyLink("  ", linkPrefix, s));
+  stylesheets = buildStylesheets(stylesheets, "  ", linkPrefix);
 
   // If the first line isn't already whitespace add an empty line after the
   // stylesheets.
