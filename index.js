@@ -16,26 +16,41 @@ async function readFileLines(file) {
   return contents.split("\n");
 }
 
-async function processFile(file) {
-  console.log(`Processing "${file}"...`);
-  let lines = await readFileLines(file);
+function prettyLink(indent, prefix, url) {
+  let link = `${indent}<${prefix}link rel="stylesheet" href="${url}" />`;
 
+  if (link.length > 80) {
+    return `${indent}<${prefix}link
+${indent}  rel="stylesheet"
+${indent}  href="${url}"
+${indent}/>`;
+  }
+
+  return link;
+}
+
+function insertStylesheets(lines, stylesheets) {
+  // We need to use a parser to figure out the XML namespaces
   let parser = sax.parser(true, {
     boolean: true,
     xmlns: true,
     position: true,
   });
 
-  let xulPrefix = null;
-  let htmlPrefix = null;
+  let xulPrefixes = [];
+  let htmlPrefixes = [];
   let afterStartTag = null;
 
   parser.onopentag = ({ name, attributes, ns }) => {
     for (let [prefix, uri] of Object.entries(ns)) {
+      if (prefix) {
+        prefix += ":";
+      }
+
       if (uri == HTML_URI) {
-        htmlPrefix = prefix;
+        htmlPrefixes.push(prefix);
       } else if (uri == XUL_URI) {
-        xulPrefix = prefix;
+        xulPrefixes.push(prefix);
       }
     }
 
@@ -47,6 +62,7 @@ async function processFile(file) {
     throw new Error("Bail out");
   };
 
+  // Strip preprocessor instructions before attempting to parse.
   let parseable = lines.map((l) => (l.startsWith("#") ? "" : l)).join("\n");
 
   try {
@@ -55,20 +71,72 @@ async function processFile(file) {
     // Ignore
   }
 
-  if (htmlPrefix === null) {
+  if (!htmlPrefixes.length) {
     throw new Error("No HTML namespace defined");
   }
 
-  if (htmlPrefix) {
-    htmlPrefix += ":";
+  // Use the shortest prefix by default.
+  htmlPrefixes.sort();
+  let linkPrefix = htmlPrefixes[0];
+
+  // First pass, attempt to find a <linkset> to insert into.
+  for (let xulPrefix of xulPrefixes) {
+    let linksetRe = new RegExp(`(\\s*)<${xulPrefix}linkset>`);
+    for (let i = 0; i < lines.length; i++) {
+      let matches = lines[i].match(linksetRe);
+      if (matches !== null) {
+        let indent = matches[1] + "  ";
+        stylesheets = stylesheets.map((s) => prettyLink(indent, linkPrefix, s));
+
+        // Add a linebreak between the stylesheets and the localization links.
+        stylesheets.push("");
+
+        lines.splice(i + 1, 0, ...stylesheets);
+
+        return;
+      }
+    }
   }
-  if (xulPrefix) {
-    xulPrefix += ":";
+
+  // Second pass, attempt to find another link element to use as a reference.
+  for (let htmlPrefix of htmlPrefixes) {
+    let linkRe = new RegExp(`(\\s*)<${htmlPrefix}link\\s`);
+    for (let i = 0; i < lines.length; i++) {
+      let matches = lines[i].match(linkRe);
+      if (matches !== null) {
+        let indent = matches[1];
+        stylesheets = stylesheets.map((s) => prettyLink(indent, htmlPrefix, s));
+
+        // Add a linebreak between the stylesheets and the localization links.
+        stylesheets.push("");
+
+        lines.splice(i, 0, ...stylesheets);
+
+        return;
+      }
+    }
   }
+
+  // Third pass, insert just after the start tag.
+  console.warn("WARN: Inserting stylesheets inside document element");
+  stylesheets = stylesheets.map((s) => prettyLink("  ", linkPrefix, s));
+
+  // If the first line isn't already whitespace add an empty line after the
+  // stylesheets.
+  if (lines[afterStartTag]) {
+    stylesheets.push("");
+  }
+
+  lines.splice(afterStartTag, 0, ...stylesheets);
+}
+
+async function processFile(file) {
+  console.log(`Processing "${file}"...`);
+  let lines = await readFileLines(file);
 
   let stylesheets = [];
 
-  // First pass, list all the stylesheets.
+  // First list all the stylesheets.
   for (let line of lines) {
     let matches = line.match(STYLESHEET_RE);
     if (matches !== null) {
@@ -81,33 +149,9 @@ async function processFile(file) {
     return;
   }
 
-  // Second pass, attempt to find another link element to use as a reference.
-  let linkRe = new RegExp(`(\\s*)<${htmlPrefix}link\\s`);
-  let found = false;
-  for (let i = 0; i < lines.length; i++) {
-    let matches = lines[i].match(linkRe);
-    if (matches !== null) {
-      found = true;
-      let indent = matches[1];
-      stylesheets = stylesheets.map(
-        (s) => `${indent}<${htmlPrefix}link rel="stylesheet" href="${s}" />`
-      );
-      lines.splice(i, 0, ...stylesheets);
+  insertStylesheets(lines, stylesheets);
 
-      break;
-    }
-  }
-
-  if (!found) {
-    // Third pass, just insert after the start tag.
-    stylesheets = stylesheets.map(
-      (s) => `  <${htmlPrefix}link rel="stylesheet" href="${s}" />`
-    );
-
-    lines.splice(afterStartTag, 0, ...stylesheets);
-  }
-
-  // Final pass, strip the processing instructions.
+  // Finally strip the processing instructions.
   let i = 0;
   while (i < lines.length) {
     while (lines[i].match(STYLESHEET_RE) !== null) {
