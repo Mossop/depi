@@ -108,6 +108,19 @@ async function processFile(file) {
   }
 
   // Final pass, strip the processing instructions.
+  let i = 0;
+  while (i < lines.length) {
+    while (lines[i].match(STYLESHEET_RE) !== null) {
+      lines.splice(i, 1);
+
+      // If the line before the PI was empty then strip any empty lines after the PI.
+      while (i > 0 && i < lines.length - 1 && !lines[i - 1] && !lines[i]) {
+        lines.splice(i, 1);
+      }
+    }
+
+    i++;
+  }
   lines = lines.filter((l) => l.match(STYLESHEET_RE) === null);
 
   // Write out the result.
